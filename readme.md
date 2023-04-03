@@ -14,3 +14,5 @@
 - в файле `bisect_repo_gen.py` изменить имя репозитория и число коммитов в нём, как требуется:
 `make_repo_for_bisect('practice300', 300)`
 - запустить `python bisect_repo_gen.py` (или `python3 bisect_repo_gen.py`)
+
+- Если не хватает "испорченных" коммитов, можно увеличить значение константы `CHANCE_OF_BROKEN_COMMIT` (в диапазоне от 0 до 1).
