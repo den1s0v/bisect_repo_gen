@@ -58,6 +58,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action='store_true',
         help='перезаписать существующий каталог репозитория',
     )
+    parser.add_argument(
+        '--commit-hints',
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help='добавлять в file.txt заголовок «нормальный/сломанный» (по умолчанию: да)',
+    )
     args = parser.parse_args(argv)
     if args.commit_count < 1:
         parser.error('--commit-count must be at least 1')
@@ -84,11 +90,17 @@ def run_git(args: list[str], cwd: Path) -> None:
 class CommitContentProvider:
     """Формирует содержимое file.txt для каждого коммита."""
 
-    def __init__(self, top: int, broken_chance: float) -> None:
+    def __init__(
+        self,
+        top: int,
+        broken_chance: float,
+        commit_hints: bool = True,
+    ) -> None:
         self.pool = set(range(1, top + 1))
         self.content: list[str] = []
         self.commit_n = 0
         self.broken_chance = broken_chance
+        self.commit_hints = commit_hints
 
     def _shuffle_existing_lines(self, new_line_index: int) -> None:
         """Переставить 0–4 строк, которые уже были до добавления новой."""
@@ -127,18 +139,27 @@ class CommitContentProvider:
         lines = self.prepare_content()
         if len(self.pool) > 1 and random.random() < self.broken_chance:
             sep = ''
-            header = (
-                f'Это сломанный коммит № {self.commit_n}, '
-                'в котором что-то сделано, но нельзя понять, что именно.'
-            )
+            if self.commit_hints:
+                header = (
+                    f'Это сломанный коммит № {self.commit_n}, '
+                    'в котором что-то сделано, но нельзя понять, что именно.'
+                )
+            else:
+                header = ''
         else:
             sep = '\n'
-            header = (
-                f'Это нормальный коммит № {self.commit_n}, '
-                'в котором можно найти искомое число.'
-            )
+            if self.commit_hints:
+                header = (
+                    f'Это нормальный коммит № {self.commit_n}, '
+                    'в котором можно найти искомое число.'
+                )
+            else:
+                header = ''
 
-        return f'{header}\n\n{sep.join(lines)}\n'
+        body = sep.join(lines)
+        if header:
+            return f'{header}\n\n{body}\n'
+        return f'{body}\n'
 
     def generate_commits(self) -> Iterator[str]:
         while self.pool:
@@ -150,6 +171,7 @@ def make_repo_for_bisect(
     commit_count: int = 100,
     target_file_name: str = 'file.txt',
     broken_chance: float = 0.1,
+    commit_hints: bool = True,
     force: bool = False,
 ) -> None:
     """Создать git-репозиторий с commit_count коммитами в repo_path."""
@@ -164,7 +186,7 @@ def make_repo_for_bisect(
     repo_path.mkdir(parents=True)
     run_git(['init'], repo_path)
 
-    ccp = CommitContentProvider(commit_count, broken_chance)
+    ccp = CommitContentProvider(commit_count, broken_chance, commit_hints)
 
     for i, content in enumerate(ccp.generate_commits()):
         target = repo_path / target_file_name
@@ -194,6 +216,7 @@ def main(argv: list[str] | None = None) -> None:
             commit_count=args.commit_count,
             target_file_name=args.target_file,
             broken_chance=args.broken_chance,
+            commit_hints=args.commit_hints,
             force=args.force,
         )
     except (FileExistsError, RuntimeError) as exc:
