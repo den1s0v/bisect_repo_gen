@@ -8,8 +8,8 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
-# Сколько существующих строк переставить в коммите (0 = не переставлять).
-_SHUFFLE_LINE_COUNT_WEIGHTS = (0.55, 0.20, 0.12, 0.08, 0.05)  # для 0, 1, 2, 3, 4
+# Сколько существующих строк переместить в коммите (0 = не перемещать).
+_RELOCATE_LINE_COUNT_WEIGHTS = (0.55, 0.20, 0.12, 0.08, 0.05)  # для 0, 1, 2, 3, 4
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -102,26 +102,27 @@ class CommitContentProvider:
         self.broken_chance = broken_chance
         self.commit_hints = commit_hints
 
-    def _shuffle_existing_lines(self, new_line_index: int) -> None:
-        """Переставить 0–4 строк, которые уже были до добавления новой."""
-        shuffle_count = random.choices(
-            range(len(_SHUFFLE_LINE_COUNT_WEIGHTS)),
-            weights=_SHUFFLE_LINE_COUNT_WEIGHTS,
+    def _relocate_existing_lines(self, new_line_index: int) -> None:
+        """Переместить 0–4 существующие строки в произвольные позиции файла."""
+        relocate_count = random.choices(
+            range(len(_RELOCATE_LINE_COUNT_WEIGHTS)),
+            weights=_RELOCATE_LINE_COUNT_WEIGHTS,
             k=1,
         )[0]
-        if shuffle_count == 0:
+        if relocate_count == 0:
             return
 
         eligible = [i for i in range(len(self.content)) if i != new_line_index]
         if not eligible:
             return
 
-        pick_count = min(shuffle_count, len(eligible))
+        pick_count = min(relocate_count, len(eligible))
         indices = random.sample(eligible, pick_count)
-        values = [self.content[i] for i in indices]
-        random.shuffle(values)
-        for index, value in zip(indices, values, strict=True):
-            self.content[index] = value
+
+        for index in sorted(indices, reverse=True):
+            value = self.content.pop(index)
+            insert_pos = random.randint(0, len(self.content))
+            self.content.insert(insert_pos, value)
 
     def prepare_content(self) -> list[str]:
         next_from_pool = random.choice(list(self.pool))
@@ -130,7 +131,7 @@ class CommitContentProvider:
         value = f'{next_from_pool:03d}'
         insert_pos = random.randint(0, len(self.content))
         self.content.insert(insert_pos, value)
-        self._shuffle_existing_lines(insert_pos)
+        self._relocate_existing_lines(insert_pos)
 
         self.commit_n += 1
         return self.content
